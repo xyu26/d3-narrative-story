@@ -65,6 +65,12 @@ const scenes = [
       "This chart shows the top content-producing countries (excluding the US) for content released in __YEAR__. You can hover over a bar to see the exact count.",
     annotation: null,
   },
+  {
+    title: "Target Audience in __YEAR__",
+    narrative:
+      "This chart shows the maturity ratings of content released in __YEAR__. This reveals Netflix's strategy for targeting specific audience segments, often focusing on adult viewers.",
+    annotation: null,
+  },
 ];
 
 // -----------------
@@ -327,6 +333,75 @@ d3.csv("netflix_titles.csv")
               .style("left", event.pageX + 15 + "px")
               .style("top", event.pageY - 28 + "px");
           });
+      } else if (sceneIndex === 3) {
+        // Dynamically update the title and narrative
+        d3.select("#scene-title").text(
+          scene.title.replace("__YEAR__", selectedYear)
+        );
+        d3.select("#scene-narrative").html(
+          scene.narrative.replace("__YEAR__", selectedYear)
+        );
+
+        // Filter data for the selected year AND remove garbage "min" ratings
+        const yearFilteredData = filteredData.filter((d) => {
+          return (
+            d.release_year === selectedYear &&
+            d.rating &&
+            !d.rating.includes(" min")
+          );
+        });
+
+        // Calculate counts for each rating
+        const ratingCounts = d3.rollup(
+          yearFilteredData,
+          (v) => v.length,
+          (d) => d.rating
+        );
+        const topRatings = Array.from(ratingCounts, ([rating, count]) => ({
+          rating,
+          count,
+        })).sort((a, b) => b.count - a.count);
+
+        // Draw the chart
+        const xScale = d3
+          .scaleLinear()
+          .domain([0, d3.max(topRatings, (d) => d.count) || 1])
+          .range([0, width]);
+        const yScale = d3
+          .scaleBand()
+          .domain(topRatings.map((d) => d.rating))
+          .range([0, height])
+          .padding(0.1);
+
+        svg
+          .append("g")
+          .attr("transform", `translate(0, ${height})`)
+          .call(d3.axisBottom(xScale));
+        svg.append("g").call(d3.axisLeft(yScale));
+
+        // ✅ --- THIS IS THE MODIFIED PART ---
+        // We are removing the .transition() to see if the bars draw directly.
+        svg
+          .selectAll("rect")
+          .data(topRatings)
+          .join("rect")
+          .attr("x", 0)
+          .attr("y", (d) => yScale(d.rating))
+          .attr("width", (d) => xScale(d.count))
+          .attr("height", yScale.bandwidth())
+          .attr("fill", "#E50914")
+          .on("mouseover", (event, d) => {
+            tooltip.transition().duration(200).style("opacity", 0.9);
+            tooltip
+              .html(
+                `<strong>Rating:</strong> ${d.rating}<br/><strong>Titles:</strong> ${d.count}`
+              )
+              .style("left", event.pageX + 15 + "px")
+              .style("top", event.pageY - 28 + "px");
+          })
+          .on("mouseout", () => {
+            tooltip.transition().duration(500).style("opacity", 0);
+          });
       }
 
       // Add annotations if they exist for the scene
@@ -344,7 +419,7 @@ d3.csv("netflix_titles.csv")
     function updateButtons() {
       d3.select("#prev-button").property("disabled", currentSceneIndex === 0);
 
-      // ✅ Hide "Next" button on Scene 2 (index 1) and the last scene
+      // This logic hides the "Next" button on Scene 2 (index 1) and the final scene.
       const hideNextButton =
         currentSceneIndex === 1 || currentSceneIndex === scenes.length - 1;
       d3.select("#next-button").style(
